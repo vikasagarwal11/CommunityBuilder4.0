@@ -1,0 +1,3 @@
+This directory will contain app icons for mobile platforms.
+Icons should be generated using a tool like Capacitor's official icon generator
+or a service like https://appicon.co/

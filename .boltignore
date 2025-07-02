@@ -1,0 +1,122 @@
+# Ignore backup-related files and directories
+backups/
+scripts/backup.js
+scripts/restore.js
+BACKUP_RESTORE_POINT_*.md
+
+# Ignore other large files that don't need to be in the context
+node_modules/
+dist/
+.git/
+*.log
+*.lock
+
+#---
+# Node modules
+node_modules/
+
+# Build directories
+dist/
+build/
+
+# Backup files
+backup_*.sql
+*.backup
+scripts/backup.js
+scripts/restore.js
+supabase/backup_*.sql
+
+# Large generated files
+*.log
+*.lock
+package-lock.json
+
+# Supabase migrations (to reduce token usage)
+supabase/migrations/*.*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Cache directories
+.cache/
+
+#Copntent from previous version:
+# Ignored files and directories
+src/components/ai/WorkoutRecommendations.tsx
+
+# Database migrations
+supabase/migrations/
+
+# Documentation and backup files
+BACKUP_RESTORE_POINT_*.md
+GITHUB_SETUP_*.md
+docs/*.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+SECURITY.md
+
+#Discarted file 
+.bolt/supabase_discarded_migrations/*.sql
+
+# Root folder files
+.env.example
+backup.*
+backup_20250610_pre_policy_drop.sql
+backup_20250610_post_reset.sql
+
+
+# Temporary files
+*.tmp
+*.temp
+
+src/pages/boltIgnore/
+#src/pages/HomePage.tsx
+
+# Large documentation files
+DOCUMENTATION.md
+README.md
+GITHUB_SETUP.md
+CONTRIBUTING.md
+CHANGELOG.md
+SECURITY.md
+LICENSE
+
+# Build and dependency files
+package-lock.json
+node_modules/
+dist/
+
+# Backup files
+BACKUP_RESTORE_POINT_*.md
+backup_*.sql
+supabase/backup_*.sql
+
+# Migration files (if you don't need AI to analyze them)
+supabase/migrations/*.sql
+
+# Discarded migrations
+.bolt/supabase_discarded_migrations/*.sql
+
+# Large configuration files
+tsconfig*.json
+eslint.config.js
+postcss.config.js
+vite.config.ts
+tailwind.config.js
+
+# Public assets
+public/
+
+src/components/chat/AIRecommendationSettings.tsx
+src/components/chat/AIRecommendationProvider.tsx
+src/components/chat/AIRecommendationSystem.tsx
+src/components/chat/AIRecommendationCarousel.tsx (apearining in system)
+src/pages/program/ProgramDashboard.tsx (if no fitness focus remains)
+src/components/chat/GoogleAISmartReplies.tsx
+src/components/chat/GoogleAIChatSuggestions.tsx
+src/components/chat/GoogleAIChatAnalytics.tsx
+src/components/chat/GoogleAIContentModerator.tsx
+src/components/chat/AIRealtimeRecommendations

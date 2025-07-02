@@ -1,0 +1,10 @@
+-- Add community_id column with foreign key reference
+ALTER TABLE user_interest_vectors
+ADD COLUMN IF NOT EXISTS community_id UUID
+
+ADD CONSTRAINT user_interest_vectors_community_id_fkey FOREIGN KEY (community_id) REFERENCES communities(id) ON DELETE CASCADE
+
+-- Update primary key to be composite
+ALTER TABLE user_interest_vectors
+DROP CONSTRAINT IF EXISTS user_interest_vectors_pkey
+ADD CONSTRAINT user_interest_vectors_pkey PRIMARY KEY (user_id, community_id)
