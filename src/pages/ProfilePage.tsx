@@ -5,6 +5,7 @@ import { Users, Settings, Calendar, AlertTriangle, Crown, Shield, ArrowRight, Re
 import { Link, useSearchParams } from 'react-router-dom';
 import type { Community } from '../lib/types/community';
 import EventManagementDashboard from '../components/profile/EventManagementDashboard';
+import ProfileAdminDashboard from '../components/profile/ProfileAdminDashboard';
 import UserAvatar from '../components/profile/UserAvatar';
 import type { Profile, ProfileUpdate } from '../lib/supabase';
 
@@ -17,7 +18,7 @@ const ProfilePage = () => {
   const [joinedCommunities, setJoinedCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'profile' | 'communities' | 'events' | 'preferences'>(initialTab as any || 'profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'communities' | 'events' | 'preferences' | 'admin'>(initialTab as any || 'profile');
   const [inactiveCommunities, setInactiveCommunities] = useState<any[]>([]);
   const [deletedCommunities, setDeletedCommunities] = useState<any[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
@@ -476,7 +477,8 @@ const ProfilePage = () => {
                 { id: 'profile', label: 'Profile Settings', icon: <User className="h-4 w-4" /> },
                 { id: 'communities', label: 'My Communities', icon: <Users className="h-4 w-4" /> },
                 { id: 'events', label: 'Event Management', icon: <Calendar className="h-4 w-4" /> },
-                { id: 'preferences', label: 'Preferences', icon: <Settings className="h-4 w-4" /> }
+                { id: 'preferences', label: 'Preferences', icon: <Settings className="h-4 w-4" /> },
+                ...(ownedCommunities.length > 0 ? [{ id: 'admin', label: 'Admin Dashboard', icon: <Crown className="h-4 w-4" /> }] : [])
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -944,6 +946,13 @@ const ProfilePage = () => {
             <div>
               <h1 className="text-2xl font-semibold mb-6">Event Management</h1>
               {user && <EventManagementDashboard userId={user.id} />}
+            </div>
+          )}
+
+          {activeTab === 'admin' && (
+            <div>
+              <h1 className="text-2xl font-semibold mb-6">Admin Dashboard</h1>
+              <ProfileAdminDashboard />
             </div>
           )}
 

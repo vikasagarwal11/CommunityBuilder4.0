@@ -52,6 +52,11 @@ interface AdminNotification {
   };
 }
 
+interface AdminNotificationCenterProps {
+  isProfileView?: boolean;
+  communities?: string[];
+}
+
 interface NotificationStats {
   total: number;
   unread: number;
@@ -59,7 +64,10 @@ interface NotificationStats {
   byPriority: Record<string, number>;
 }
 
-const AdminNotificationCenter: React.FC = () => {
+const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({ 
+  isProfileView = false, 
+  communities = [] 
+}) => {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,27 +85,40 @@ const AdminNotificationCenter: React.FC = () => {
 
   useEffect(() => {
     fetchNotifications();
-  }, [showRead, selectedCategory, selectedPriority]);
+  }, [showRead, selectedCategory, selectedPriority, communities]);
 
   const fetchNotifications = async () => {
     try {
       setLoading(true);
       setError('');
 
-      // Get all communities where user is admin
-      const { data: adminCommunities } = await supabase
-        .from('community_members')
-        .select('community_id')
-        .eq('user_id', user?.id)
-        .in('role', ['admin', 'co-admin']);
+      let communityIds: string[] = [];
 
-      if (!adminCommunities || adminCommunities.length === 0) {
+      if (isProfileView && communities.length > 0) {
+        // Use provided communities for profile view
+        communityIds = communities;
+      } else {
+        // Get all communities where user is admin
+        const { data: adminCommunities } = await supabase
+          .from('community_members')
+          .select('community_id')
+          .eq('user_id', user?.id)
+          .in('role', ['admin', 'co-admin']);
+
+        if (!adminCommunities || adminCommunities.length === 0) {
+          setNotifications([]);
+          setStats({ total: 0, unread: 0, byCategory: {}, byPriority: {} });
+          return;
+        }
+
+        communityIds = adminCommunities.map(c => c.community_id);
+      }
+
+      if (communityIds.length === 0) {
         setNotifications([]);
         setStats({ total: 0, unread: 0, byCategory: {}, byPriority: {} });
         return;
       }
-
-      const communityIds = adminCommunities.map(c => c.community_id);
 
       // Fetch notifications for all admin communities
       let query = supabase
