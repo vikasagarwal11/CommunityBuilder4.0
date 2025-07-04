@@ -22,6 +22,7 @@ import SettingsPage from './pages/SettingsPage';
 import UserProfilePage from './pages/UserProfilePage';
 import ContactAdminPage from './pages/ContactAdminPage';
 import CommunityAdminMessagesPage from './pages/CommunityAdminMessagesPage';
+import AIExamplePage from './pages/AIExamplePage';
 import NotFoundPage from './pages/NotFoundPage';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
@@ -92,6 +93,7 @@ function App() {
           <Route path="community/:id/events/create" element={<CreateEventPage />} />
           <Route path="contact-admin" element={<ContactAdminPage />} />
           <Route path="community/:id/admin/messages" element={<CommunityAdminMessagesPage />} />
+          <Route path="ai-example" element={<AIExamplePage />} />
         </Route>
 
         {/* Admin routes */}

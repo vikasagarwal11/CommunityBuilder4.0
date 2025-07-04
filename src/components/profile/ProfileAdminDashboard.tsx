@@ -27,7 +27,7 @@ const ProfileAdminDashboard: React.FC = () => {
     try {
       setLoading(true);
       
-      // Get communities where user is admin
+      // Get communities where user is admin (check both 'admin' and 'ADMIN' roles)
       const { data: adminCommunities, error } = await supabase
         .from('community_members')
         .select(`
@@ -41,11 +41,13 @@ const ProfileAdminDashboard: React.FC = () => {
           )
         `)
         .eq('user_id', user?.id)
-        .eq('role', 'ADMIN');
+        .in('role', ['admin', 'ADMIN']);
 
       if (error) throw error;
 
+      console.log('Admin communities found:', adminCommunities);
       const communityData = adminCommunities?.map(item => item.communities).filter(Boolean) || [];
+      console.log('Processed community data:', communityData);
       setCommunities(communityData);
     } catch (error) {
       console.error('Error fetching communities:', error);

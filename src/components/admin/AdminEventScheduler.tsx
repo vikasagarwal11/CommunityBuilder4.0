@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Wand2, Sparkles, AlertTriangle } from 'lucide-react';
 import EventForm from '../events/EventForm';
-import { googleAI } from '../../lib/ai/googleAI';
+import { intentDetectionService } from '../../lib/ai/modules/intentDetection';
 
 interface AdminEventSchedulerProps {
   communityId: string;
@@ -44,11 +44,11 @@ const AdminEventScheduler: React.FC<AdminEventSchedulerProps> = ({
     }
     setLoading(true);
     try {
-      const aiEvent = await googleAI.generateEventFromPrompt(prompt, { communityId });
+      const extractedDetails = await intentDetectionService.extractEventDetailsFromPrompt(prompt, { communityId });
 
       // Validate and fallback for AI date/time extraction
-      const start_date = parseDate(aiEvent.startDate);
-      const start_time = parseTime(aiEvent.startTime);
+      const start_date = extractedDetails.date;
+      const start_time = extractedDetails.time;
 
       if (!start_date || !start_time) {
         setError(
@@ -57,21 +57,21 @@ const AdminEventScheduler: React.FC<AdminEventSchedulerProps> = ({
       }
 
       setPrefilledEvent({
-        title: aiEvent.title || '',
-        description: aiEvent.description || '',
-        location: aiEvent.location || '',
+        title: extractedDetails.title || '',
+        description: extractedDetails.description || '',
+        location: extractedDetails.location || '',
         start_date,
         start_time,
-        end_date: parseDate(aiEvent.endDate),
-        end_time: parseTime(aiEvent.endTime),
-        capacity: aiEvent.capacity ? String(aiEvent.capacity) : '',
-        is_online: aiEvent.isOnline || false,
-        meeting_url: aiEvent.meetingUrl || '',
-        is_recurring: aiEvent.isRecurring || false,
-        recurrence_type: aiEvent.recurrencePattern || 'weekly',
-        recurrence_interval: aiEvent.recurrenceInterval || '1',
-        recurrence_end_date: aiEvent.recurrenceEndDate || '',
-        tags: aiEvent.tags || [],
+        end_date: '', // Will be calculated based on duration
+        end_time: '', // Will be calculated based on duration
+        capacity: extractedDetails.suggestedCapacity ? String(extractedDetails.suggestedCapacity) : '',
+        is_online: extractedDetails.isOnline || false,
+        meeting_url: extractedDetails.meetingUrl || '',
+        is_recurring: false,
+        recurrence_type: 'weekly',
+        recurrence_interval: '1',
+        recurrence_end_date: '',
+        tags: extractedDetails.tags || [],
       });
     } catch (err: any) {
       setError('Failed to generate event from AI. Please try again or refine your prompt.');

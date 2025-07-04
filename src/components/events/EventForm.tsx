@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { Calendar, Clock, MapPin, Users, Link as LinkIcon, Upload, Tag, X, Plus, Info } from 'lucide-react';
+import { intentDetectionService } from '../../lib/ai/modules/intentDetection';
+import { Calendar, Clock, MapPin, Users, Link as LinkIcon, Upload, Tag, X, Plus, Info, Sparkles, Wand2 } from 'lucide-react';
 // ---- Community Pulse Store START ----
 import {
   getPulseIdeas,
@@ -17,6 +18,7 @@ interface EventFormProps {
   onSuccess: (eventId: string) => void;
   onCancel: () => void;
   existingEvent?: any; // For editing existing events or AI prefill
+  showAIOption?: boolean; // Show AI-based field extraction option
 }
 
 interface EventFormData {
@@ -47,13 +49,19 @@ function safeDateParse(date?: string, time?: string) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
-const EventForm = ({ communityId, onSuccess, onCancel, existingEvent }: EventFormProps) => {
+const EventForm = ({ communityId, onSuccess, onCancel, existingEvent, showAIOption = false }: EventFormProps) => {
   const { user } = useAuth();
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(existingEvent?.image_url || null);
   const [newTag, setNewTag] = useState('');
   const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(existingEvent?.is_recurring || false);
+  
+  // AI-based field extraction state
+  const [showAIPrompt, setShowAIPrompt] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
 
   // ---- Community Pulse State START ----
   const [pulseIdeas, setPulseIdeas] = useState<PulseIdea[]>(getPulseIdeas());
@@ -198,6 +206,60 @@ const EventForm = ({ communityId, onSuccess, onCancel, existingEvent }: EventFor
 
   const removeTag = (tagToRemove: string) => {
     setValue('tags', watchedTags.filter(tag => tag !== tagToRemove));
+  };
+
+  // AI-based field extraction
+  const handleAIExtraction = async () => {
+    if (!aiPrompt.trim()) {
+      setAiError('Please enter a description of the event you want to create.');
+      return;
+    }
+
+    setAiLoading(true);
+    setAiError('');
+
+    try {
+      const extractedDetails = await intentDetectionService.extractEventDetailsFromPrompt(aiPrompt, {
+        communityId
+      });
+
+      // Auto-populate form fields with extracted details
+      if (extractedDetails.title) {
+        setValue('title', extractedDetails.title);
+      }
+      if (extractedDetails.description) {
+        setValue('description', extractedDetails.description);
+      }
+      if (extractedDetails.date) {
+        setValue('start_date', extractedDetails.date);
+      }
+      if (extractedDetails.time) {
+        setValue('start_time', extractedDetails.time);
+      }
+      if (extractedDetails.location) {
+        setValue('location', extractedDetails.location);
+      }
+      if (extractedDetails.suggestedCapacity) {
+        setValue('capacity', extractedDetails.suggestedCapacity.toString());
+      }
+      if (extractedDetails.isOnline) {
+        setValue('is_online', extractedDetails.isOnline);
+      }
+      if (extractedDetails.meetingUrl) {
+        setValue('meeting_url', extractedDetails.meetingUrl);
+      }
+      if (extractedDetails.tags && extractedDetails.tags.length > 0) {
+        setValue('tags', extractedDetails.tags);
+      }
+
+      setShowAIPrompt(false);
+      setAiPrompt('');
+    } catch (error) {
+      console.error('AI extraction failed:', error);
+      setAiError('Failed to extract event details. Please try again or fill in the details manually.');
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   // components/events/EventForm.tsx (partial update)
@@ -366,6 +428,84 @@ const onSubmit = async (data: EventFormData) => {
         <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center text-red-700 text-sm sm:text-base">
           <Info className="h-5 w-5 mr-2" />
           {error}
+        </div>
+      )}
+
+      {/* AI-based field extraction section */}
+      {showAIOption && (
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center">
+              <Sparkles className="h-5 w-5 text-blue-600 mr-2" />
+              <h3 className="text-lg font-medium text-blue-900">AI-Powered Event Creation</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAIPrompt(!showAIPrompt)}
+              className="flex items-center text-sm text-blue-600 hover:text-blue-700"
+            >
+              {showAIPrompt ? 'Hide AI' : 'Use AI'}
+              <Wand2 className="h-4 w-4 ml-1" />
+            </button>
+          </div>
+          
+          {showAIPrompt && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-blue-900 mb-1">
+                  Describe your event in natural language
+                </label>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  className="input w-full h-24 resize-none text-sm"
+                  placeholder="e.g., I want to organize a yoga session tomorrow at 6pm in the community center for 15 people. It should be a beginner-friendly class focusing on relaxation."
+                />
+              </div>
+              
+              {aiError && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-700">{aiError}</p>
+                </div>
+              )}
+              
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleAIExtraction}
+                  disabled={aiLoading || !aiPrompt.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center text-sm"
+                >
+                  {aiLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Extracting...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 mr-2" />
+                      Extract Details
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAIPrompt(false);
+                    setAiPrompt('');
+                    setAiError('');
+                  }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+              
+              <p className="text-xs text-blue-700">
+                AI will extract event details from your description and auto-populate the form fields below.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

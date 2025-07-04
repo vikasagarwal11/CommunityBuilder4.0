@@ -50,7 +50,12 @@ const CommunityListPage = () => {
   const [connectionError, setConnectionError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [activeTab, setActiveTab] = useState<'featured' | 'all' | 'joined' | 'recommended' | 'trending'>('all');
+  const [activeTab, setActiveTab] = useState<'featured' | 'all' | 'joined' | 'recommended' | 'trending'>(
+    () => {
+      if (!user) return 'all';
+      return 'all';
+    }
+  );
   const [carouselIndex, setCarouselIndex] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
   const [isScrolling, setIsScrolling] = useState(false);
@@ -357,30 +362,22 @@ const CommunityListPage = () => {
     }
   }, [carouselIndex, featuredCommunities.length]);
 
+  useEffect(() => {
+    if (user && communities.some(c => c.is_member)) {
+      setActiveTab('joined');
+    }
+  }, [user, communities]);
+
   const JoinModal = ({ community, onClose }: { community: Community; onClose: () => void }) => (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <motion.div className="bg-white rounded-xl max-w-md w-full p-6" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
         <div className="text-center">
           <div className="h-16 w-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4"><Lock className="h-8 w-8 text-white" /></div>
           <h3 className="text-xl font-semibold mb-2">Join "{community.name}"</h3>
-          <p className="text-neutral-600 mb-6">Connect with {community.member_count} people who share your passion.</p>
-          {community.creator_profile && (
-            <div className="bg-neutral-50 rounded-lg p-3 mb-4 flex items-center justify-center">
-              <div className="h-8 w-8 rounded-full overflow-hidden bg-neutral-200 mr-2">
-                {community.creator_profile.avatar_url ? (
-                  <img src={community.creator_profile.avatar_url} alt={community.creator_profile.full_name} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="h-full w-full flex items-center justify-center">
-                    {community.creator_profile.role === 'admin' ? (
-                      <Crown className="h-4 w-4 text-yellow-500" />
-                    ) : (
-                      <Shield className="h-4 w-4 text-blue-500" />
-                    )}
-                  </div>
-                )}
-              </div>
-              <p className="text-sm font-medium text-neutral-700">{community.creator_profile.full_name}</p>
-            </div>
+          {community.member_count && community.member_count >= 20 ? (
+            <p className="text-neutral-600 mb-6">Connect with {community.member_count} people who share your passion.</p>
+          ) : (
+            <p className="text-neutral-600 mb-6">Be one of the first to join and help grow this community!</p>
           )}
           <div className="space-y-2 text-sm text-purple-600 mb-6">
             <div className="flex items-center"><MessageSquare className="h-4 w-4 mr-2" />Live chat</div>

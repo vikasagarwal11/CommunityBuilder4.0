@@ -22,6 +22,7 @@ export interface CommunityAIProfile {
   target_audience: string[];
   common_topics: string[];
   event_types: string[];
+  recommended_event_frequency?: string;
   is_active?: boolean;
   deactivated_at?: string | null;
   knowledge_transfer_enabled?: boolean;

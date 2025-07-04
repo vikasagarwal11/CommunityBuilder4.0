@@ -45,6 +45,7 @@ interface CommunityData {
   is_active?: boolean;
   deactivated_at?: string | null;
   deleted_at?: string | null;
+  join_approval_required: boolean;
 }
 
 const CommunitySettings = ({ 
@@ -76,6 +77,7 @@ const CommunitySettings = ({
   const [deactivating, setDeactivating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [joinApprovalRequired, setJoinApprovalRequired] = useState<boolean>(false);
 
   // Check if user is admin
   const checkAdminStatus = async () => {
@@ -135,7 +137,7 @@ const CommunitySettings = ({
     try {
       const { data, error } = await supabase
         .from('communities')
-        .select('id, name, description, image_url, tags, slug, is_active, deactivated_at, deleted_at')
+        .select('id, name, description, image_url, tags, slug, is_active, deactivated_at, deleted_at, join_approval_required')
         .eq('id', communityId)
         .single();
 
@@ -145,6 +147,7 @@ const CommunitySettings = ({
       setNewDescription(data.description);
       setNewTags(data.tags || []);
       setNewSlug(data.slug || generateSlug(data.name));
+      setJoinApprovalRequired(!!data.join_approval_required);
     } catch (error) {
       console.error('Error fetching community details:', error);
       setError('Failed to load community details');
@@ -214,26 +217,54 @@ const CommunitySettings = ({
     return () => clearTimeout(timeoutId);
   }, [newSlug, communityData?.slug]);
 
+  // Fetch join_approval_required from communities table
+  const fetchJoinApprovalRequired = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('communities')
+        .select('join_approval_required')
+        .eq('id', communityId)
+        .single();
+      if (error) throw error;
+      setJoinApprovalRequired(!!data?.join_approval_required);
+    } catch (error) {
+      console.error('Error fetching join approval setting:', error);
+    }
+  };
+
+  // Update useEffect to fetch join approval setting
+  useEffect(() => {
+    const loadData = async () => {
+      await checkAdminStatus();
+      await fetchSettings();
+      await fetchCommunityDetails();
+      await fetchJoinApprovalRequired();
+    };
+    loadData();
+  }, [communityId, user]);
+
   // Save settings
   const saveSettings = async () => {
     if (!settings || !isAdmin) return;
-
     try {
       setSaving(true);
       setError('');
-
-      const { error } = await supabase
+      // Update community_settings as before
+      const { error: settingsError } = await supabase
         .from('community_settings')
         .update({
           allow_direct_messages: settings.allow_direct_messages,
           allow_member_invites: settings.allow_member_invites,
-          require_admin_approval: settings.require_admin_approval,
           updated_at: new Date().toISOString()
         })
         .eq('id', settings.id);
-
-      if (error) throw error;
-
+      if (settingsError) throw settingsError;
+      // Update join_approval_required in communities table
+      const { error: approvalError } = await supabase
+        .from('communities')
+        .update({ join_approval_required: joinApprovalRequired })
+        .eq('id', communityId);
+      if (approvalError) throw approvalError;
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (error) {
@@ -483,16 +514,6 @@ const CommunitySettings = ({
     }
   };
 
-  useEffect(() => {
-    const loadData = async () => {
-      await checkAdminStatus();
-      await fetchSettings();
-      await fetchCommunityDetails();
-    };
-
-    loadData();
-  }, [communityId, user]);
-
   if (loading) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -672,18 +693,15 @@ const CommunitySettings = ({
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
-                      checked={settings.require_admin_approval}
-                      onChange={() => setSettings({
-                        ...settings,
-                        require_admin_approval: !settings.require_admin_approval
-                      })}
+                      checked={joinApprovalRequired}
+                      onChange={() => setJoinApprovalRequired(v => !v)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
                   </label>
                 </div>
                 <p className="text-sm text-neutral-600">
-                  {settings.require_admin_approval 
+                  {joinApprovalRequired
                     ? "New members require admin approval to join"
                     : "New members can join without approval"
                   }

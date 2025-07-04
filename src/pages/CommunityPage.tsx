@@ -37,6 +37,7 @@ import DirectMessaging from '../components/chat/DirectMessaging';
 import AIRealtimeRecommendations from '../components/chat/AIRealtimeRecommendations';
 import ErrorBoundary from '../components/ErrorBoundary';
 import CommunitySettings from '../components/community/CommunitySettings';
+import CommunityJoinButton from '../components/community/CommunityJoinButton';
 import MessageReactions from '../components/chat/MessageReactions';
 import MessageIntentDetector from '../components/chat/MessageIntentDetector';
 import { handleNewMessage } from '../lib/ai/chatOrchestrator';
@@ -1041,13 +1042,19 @@ const [showSettings, setShowSettings] = useState(false); // Added missing state
             <p className="text-primary-600 mb-4">
               Join this community to participate in discussions, attend events, and connect with other members.
             </p>
-            <button
-              onClick={handleJoinCommunity}
-              className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center"
-            >
-              <UserPlus className="h-5 w-5 mr-2" />
-              Join Community
-            </button>
+            <CommunityJoinButton
+              community={community}
+              isMember={isMember}
+              onJoinSuccess={() => {
+                setIsMember(true);
+                setUserRole('member');
+                sessionStorage.setItem('joinedCommunity', community.id);
+                setShowWelcomeModal(true);
+              }}
+              onRequestSent={() => {
+                // Handle request sent notification
+              }}
+            />
           </div>
         </div>
       </div>

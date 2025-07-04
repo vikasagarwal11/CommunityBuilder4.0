@@ -1,12 +1,14 @@
 import { supabase } from '../supabase';
 import type { CommunityAIProfile } from '../types/community';
 
-// Google AI API key from environment variables
+// API keys from environment variables
 const GOOGLE_AI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API_KEY;
+const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+const XAI_API_KEY = import.meta.env.VITE_XAI_API_KEY;
 const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 // Dummy log to confirm file update
-console.log('This is the updated GoogleAI.ts file as of 06/19/2025');
+console.log('This is the updated GoogleAI.ts file as of 07/03/2025');
 
 export interface AIAnalysisResult {
   sentiment: 'positive' | 'negative' | 'neutral';
@@ -65,11 +67,11 @@ export interface ImageAnalysisResult {
 }
 
 class GoogleAI {
-  private async fetchFromGoogleAI(endpoint: string, payload: any) {
+  private async fetchFromGoogleAI(endpoint: string, payload: any): Promise<any> {
     console.log(`Fetching from Google AI API: ${endpoint} with payload:`, JSON.stringify(payload));
     if (!GOOGLE_AI_API_KEY || GOOGLE_AI_API_KEY === 'your_google_ai_api_key_here') {
       console.error('Google AI API key is not configured. Please set VITE_GOOGLE_AI_API_KEY in your .env file.');
-      throw new Error('Google AI API key is not configured. Please set VITE_GOOGLE_AI_API_KEY in your .env file.');
+      throw new Error('Google AI API key is not configured.');
     }
 
     try {
@@ -96,53 +98,156 @@ class GoogleAI {
     }
   }
 
-  public async analyzeMessage(message: string, userPreferences?: any): Promise<AIAnalysisResult> {
+  private async fetchFromXAI(prompt: string): Promise<any> {
+    if (!XAI_API_KEY) {
+      throw new Error('xAI API key is not configured.');
+    }
     try {
-      const prompt = `Analyze the following message for sentiment, topics, keywords, toxicity level (0-1), and any action items. 
+      const response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${XAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'grok-3',
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`xAI API error: ${response.status} - ${errorText}`);
+      }
+      const data = await response.json();
+      let responseText = data.choices[0].message.content.trim();
+      responseText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      const jsonMatch = responseText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+      if (!jsonMatch) throw new Error('No valid JSON found in xAI response');
+      return JSON.parse(jsonMatch[0]);
+    } catch (error) {
+      console.error('Error calling xAI API:', error);
+      throw error;
+    }
+  }
 
-IMPORTANT: Return ONLY a valid JSON object with no additional text, explanations, or formatting. Do not include markdown code blocks or any other text.
+  public async analyzeMessage(message: string, userPreferences?: any): Promise<any> {
+    try {
+      const { data: community } = await supabase
+        .from('ai_community_profiles')
+        .select('purpose, tone, common_topics, target_audience')
+        .eq('community_id', userPreferences?.communityId)
+        .single();
 
-${userPreferences ? `User preferences: ${JSON.stringify(userPreferences, null, 2)}` : ''}
+      const prompt = `Classify the intent of this message and provide details in JSON format:
+Message: "${message}"
+
+${userPreferences ? `User preferences: ${JSON.stringify(userPreferences)}` : ''}
+${community ? `Community context: ${JSON.stringify({
+  purpose: community.purpose,
+  tone: community.tone,
+  common_topics: community.common_topics,
+  target_audience: community.target_audience
+})}` : ''}
 
 Required JSON structure:
 {
-  "sentiment": "positive|negative|neutral",
-  "topics": ["topic1", "topic2"],
-  "keywords": ["keyword1", "keyword2"],
-  "toxicity": 0.1,
-  "actionItems": ["action1", "action2"],
-  "confidence": 0.9,
-  "language": "en"
+  "intent_type": "event|feedback|question|announcement|other",
+  "confidence": number,
+  "details": {
+    // For event: { title: string, description: string, date?: string, time?: string, location?: string, suggestedDuration?: number, suggestedCapacity?: number, tags?: string[], isOnline?: boolean, meetingUrl?: string }
+    // For feedback: { sentiment: "positive|negative|neutral", topic: string }
+    // For question: { topic: string, urgency: "high|medium|low" }
+    // For announcement: { summary: string }
+    // For other: { description: string }
+  }
 }
 
-Message to analyze: "${message}"`;
+Ensure the response aligns with the community context and user preferences.`;
 
-      const payload = {
+      // Try Google AI first
+      let result = await this.fetchFromGoogleAI('models/gemini-2.0-flash:generateContent', {
         contents: [{ parts: [{ text: prompt }] }],
-      };
-
-      const response = await this.fetchFromGoogleAI('models/gemini-2.0-flash:generateContent', payload);
-
-      let responseText = response.candidates[0].content.parts[0].text.trim();
+      });
+      let responseText = result.candidates[0].content.parts[0].text.trim();
       responseText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No valid JSON found in response');
+      if (!jsonMatch) throw new Error('No valid JSON found in Google AI response');
+      let analysisResult = JSON.parse(jsonMatch[0]);
+
+      // Log to ai_interactions
+      await this.saveInteraction(
+        userPreferences?.userId || 'unknown',
+        'analysis',
+        message,
+        analysisResult
+      );
+
+      // If confidence is low, validate with OpenAI and xAI
+      if (analysisResult.confidence < 0.7) {
+        const results = [analysisResult];
+        try {
+          const xAIResult = await this.fetchFromXAI(prompt);
+          results.push({ ...xAIResult, source: 'xai' });
+        } catch (xAIError) {
+          console.warn('xAI fallback failed:', xAIError);
+        }
+
+        // Ensemble voting: choose the result with highest confidence
+        analysisResult = results.reduce((best, curr) =>
+          curr.confidence > best.confidence ? curr : best
+        );
+
+        // Log edge case if confidence remains low or intent is 'other'
+        if (analysisResult.confidence < 0.7 || analysisResult.intent_type === 'other') {
+          await this.logAIGeneration(
+            userPreferences?.communityId || 'unknown',
+            'intent_detection',
+            'unrecognized',
+            { message, results },
+            analysisResult
+          );
+        }
       }
 
-      const analysisResult = JSON.parse(jsonMatch[0]);
+      // Trigger learning system updates
+      if (analysisResult.intent_type === 'event') {
+        try {
+          const { learningSystem } = await import('./learningSystem');
+          // Optionally, trigger user interest vector update
+          if (userPreferences?.userId && userPreferences?.communityId) {
+            await learningSystem.onUserJoinsCommunity(userPreferences.userId, userPreferences.communityId);
+          }
+        } catch (error) {
+          console.warn('Failed to update learning system:', error);
+        }
+      } else if (analysisResult.intent_type === 'feedback' || analysisResult.intent_type === 'question') {
+        try {
+          const { learningSystem } = await import('./learningSystem');
+          if (userPreferences?.userId && userPreferences?.communityId) {
+            await learningSystem.onUserJoinsCommunity(userPreferences.userId, userPreferences.communityId);
+          }
+        } catch (error) {
+          console.warn('Failed to update user interest vector:', error);
+        }
+      }
+
       return analysisResult;
     } catch (error) {
       console.error('Error analyzing message:', error);
-      return {
-        sentiment: 'neutral',
-        topics: [],
-        keywords: [],
-        toxicity: 0,
-        actionItems: [],
+      const fallbackResult = {
+        intent_type: 'other',
         confidence: 0,
-        language: 'en',
+        details: { description: message },
       };
+      await this.logAIGeneration(
+        userPreferences?.communityId || 'unknown',
+        'intent_detection',
+        'error',
+        { message, error: error.message },
+        fallbackResult,
+        error.message
+      );
+      return fallbackResult;
     }
   }
 
@@ -662,7 +767,7 @@ Make suggestions relevant, supportive, and tailored to the user's interests and 
   private async logAIGeneration(
     communityId: string,
     operationType: string,
-    status: 'started' | 'success' | 'error',
+    status: 'started' | 'success' | 'error' | 'unrecognized',
     inputData: any,
     outputData?: any,
     errorMessage?: string
@@ -806,20 +911,9 @@ Make suggestions relevant, supportive, and tailored to the user's interests and 
         contents: [{ parts: [{ text: prompt }] }],
       };
 
-      const response = await fetch(`${API_BASE_URL}/models/gemini-2.0-flash:generateContent?key=${GOOGLE_AI_API_KEY}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await this.fetchFromGoogleAI('models/gemini-2.0-flash:generateContent', payload);
 
-      if (!response.ok) {
-        throw new Error(`Google AI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      let responseText = data.candidates[0].content.parts[0].text.trim();
+      let responseText = response.candidates[0].content.parts[0].text.trim();
       responseText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
@@ -1022,9 +1116,10 @@ Make suggestions relevant, supportive, and tailored to the user's interests and 
       ];
     }
   }
+
   public async generateEventFromPrompt(prompt: string, context?: any): Promise<any> {
-  const today = new Date().toISOString().split('T')[0];
-  const aiPrompt = `
+    const today = new Date().toISOString().split('T')[0];
+    const aiPrompt = `
 Based on the following description, generate an event object with fields:
 - title
 - description
@@ -1052,33 +1147,45 @@ Description: "${prompt}"
 ${context && context.communityId ? `CommunityId: ${context.communityId}` : ''}
 `;
 
-  const payload = {
-    contents: [{ parts: [{ text: aiPrompt }] }],
-  };
+    const payload = {
+      contents: [{ parts: [{ text: aiPrompt }] }],
+    };
 
-  const response = await this.fetchFromGoogleAI('models/gemini-2.0-flash:generateContent', payload);
+    const response = await this.fetchFromGoogleAI('models/gemini-2.0-flash:generateContent', payload);
 
-  let responseText = response.candidates[0].content.parts[0].text.trim();
-  responseText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
-  const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error('No valid JSON found in response');
+    let responseText = response.candidates[0].content.parts[0].text.trim();
+    responseText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('No valid JSON found in response');
+    }
+    const aiEvent = JSON.parse(jsonMatch[0]);
+
+    // Fallbacks for missing values, and always map participantLimit to capacity
+    if (!aiEvent.capacity && aiEvent.participantLimit) {
+      aiEvent.capacity = aiEvent.participantLimit;
+    }
+    if (aiEvent.capacity === undefined) aiEvent.capacity = null;
+    if (!aiEvent.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(aiEvent.startDate)) aiEvent.startDate = '';
+    if (!aiEvent.startTime || !/^\d{2}:\d{2}$/.test(aiEvent.startTime)) aiEvent.startTime = '';
+    if (!aiEvent.endDate || !/^\d{4}-\d{2}-\d{2}$/.test(aiEvent.endDate)) aiEvent.endDate = '';
+    if (!aiEvent.endTime || !/^\d{2}:\d{2}$/.test(aiEvent.endTime)) aiEvent.endTime = '';
+    if (!Array.isArray(aiEvent.tags)) aiEvent.tags = [];
+    return aiEvent;
   }
-  const aiEvent = JSON.parse(jsonMatch[0]);
-
-  // Fallbacks for missing values, and always map participantLimit to capacity
-  if (!aiEvent.capacity && aiEvent.participantLimit) {
-    aiEvent.capacity = aiEvent.participantLimit;
-  }
-  if (aiEvent.capacity === undefined) aiEvent.capacity = null;
-  if (!aiEvent.startDate || !/^\d{4}-\d{2}-\d{2}$/.test(aiEvent.startDate)) aiEvent.startDate = '';
-  if (!aiEvent.startTime || !/^\d{2}:\d{2}$/.test(aiEvent.startTime)) aiEvent.startTime = '';
-  if (!aiEvent.endDate || !/^\d{4}-\d{2}-\d{2}$/.test(aiEvent.endDate)) aiEvent.endDate = '';
-  if (!aiEvent.endTime || !/^\d{2}:\d{2}$/.test(aiEvent.endTime)) aiEvent.endTime = '';
-  if (!Array.isArray(aiEvent.tags)) aiEvent.tags = [];
-  return aiEvent;
-}
-
 }
 
 export const googleAI = new GoogleAI();
+
+// Update fetchOpenAIIntent to call the new Supabase Edge Function
+async function fetchOpenAIIntent(prompt: string): Promise<any> {
+  // Adjust the URL to your deployed Supabase Edge Function if needed
+  const response = await fetch('/functions/v1/openai-intent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!response.ok) throw new Error('Failed to fetch OpenAI intent');
+  const data = await response.json();
+  return data.result;
+}

@@ -188,6 +188,8 @@ const ProfilePage = () => {
         c.deleted_at !== null
       );
       
+      console.log('ProfilePage - Owned communities:', owned);
+      console.log('ProfilePage - All member data:', memberData);
       setOwnedCommunities(owned);
       setJoinedCommunities(joined);
       setInactiveCommunities(inactive);
@@ -252,11 +254,9 @@ const ProfilePage = () => {
   useEffect(() => {
     if (user) {
       fetchProfile();
-      if (activeTab === 'communities') {
-        fetchCommunities();
-      }
+      fetchCommunities(); // Always fetch communities to populate ownedCommunities
     }
-  }, [user, activeTab]);
+  }, [user]);
 
   const handleSaveProfile = async () => {
     if (!user) return;

@@ -76,8 +76,10 @@ const AdminHeader = ({ toggleSidebar }: AdminHeaderProps) => {
         
         <div className="flex items-center">
           <div className="hidden md:block mr-2 text-right">
-            <p className="text-sm font-medium text-neutral-800">Admin User</p>
-            <p className="text-xs text-neutral-500">admin@momfit.com</p>
+            <p className="text-sm font-medium text-neutral-800">
+              {user?.email?.split('@')[0] || 'Admin User'}
+            </p>
+            <p className="text-xs text-neutral-500">{user?.email || 'admin@momfit.com'}</p>
           </div>
           <div className="h-9 w-9 rounded-full bg-neutral-200 flex items-center justify-center">
             <User size={18} className="text-neutral-500" />

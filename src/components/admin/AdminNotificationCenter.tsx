@@ -32,12 +32,16 @@ interface AdminNotification {
   intent_type: string;
   intent_details: {
     type: string;
-    priority: 'low' | 'medium' | 'high' | 'urgent';
-    summary: string;
-    category: 'event_suggestion' | 'join_request' | 'content_moderation' | 'member_issue' | 'system_alert' | 'ai_insight';
+    priority?: 'low' | 'medium' | 'high' | 'urgent';
+    summary?: string;
+    category?: 'event_suggestion' | 'join_request' | 'content_moderation' | 'member_issue' | 'system_alert' | 'ai_insight';
     details: any;
     suggestedActions?: string[];
   };
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  category?: 'event_suggestion' | 'join_request' | 'content_moderation' | 'member_issue' | 'system_alert' | 'ai_insight' | 'general';
+  summary?: string;
+  suggested_actions?: string[];
   is_read: boolean;
   created_by: string;
   created_at: string;
@@ -150,13 +154,13 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
       
       if (selectedCategory !== 'all') {
         filteredNotifications = filteredNotifications.filter(
-          n => n.intent_details?.category === selectedCategory
+          n => n.category === selectedCategory || n.intent_details?.category === selectedCategory
         );
       }
 
       if (selectedPriority !== 'all') {
         filteredNotifications = filteredNotifications.filter(
-          n => n.intent_details?.priority === selectedPriority
+          n => n.priority === selectedPriority || n.intent_details?.priority === selectedPriority
         );
       }
 
@@ -179,8 +183,8 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
     };
 
     allNotifications.forEach(notification => {
-      const category = notification.intent_details?.category || 'unknown';
-      const priority = notification.intent_details?.priority || 'medium';
+      const category = notification.category || notification.intent_details?.category || 'unknown';
+      const priority = notification.priority || notification.intent_details?.priority || 'medium';
       
       stats.byCategory[category] = (stats.byCategory[category] || 0) + 1;
       stats.byPriority[priority] = (stats.byPriority[priority] || 0) + 1;
@@ -242,8 +246,54 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
   };
 
   const handleApproveEvent = async (notification: AdminNotification) => {
-    // Implementation for approving events
-    console.log('Approving event from notification:', notification.id);
+    try {
+      setProcessingAction(notification.id);
+      
+      // Extract event details from notification
+      const eventDetails = notification.intent_details?.details;
+      if (!eventDetails) {
+        throw new Error('No event details found in notification');
+      }
+
+      // Create event using the event scheduler service
+      const { eventSchedulerService } = await import('../../lib/ai/modules/eventScheduler');
+      
+      const result = await eventSchedulerService.createEventFromIntent(
+        {
+          intent: 'create_event',
+          confidence: 0.9,
+          entities: {
+            title: eventDetails.title,
+            description: eventDetails.description,
+            date: eventDetails.date,
+            time: eventDetails.time,
+            location: eventDetails.location,
+            suggestedDuration: eventDetails.suggestedDuration,
+            suggestedCapacity: eventDetails.suggestedCapacity,
+            tags: eventDetails.tags,
+            isOnline: eventDetails.isOnline,
+            meetingUrl: eventDetails.meetingUrl
+          }
+        },
+        notification.community_id,
+        notification.created_by
+      );
+
+      if (result) {
+        // Mark notification as processed
+        await markAsRead(notification.id);
+        
+        // Show success message
+        alert(`Event "${result.title}" created successfully!`);
+      } else {
+        throw new Error('Failed to create event');
+      }
+    } catch (error) {
+      console.error('Error creating event from notification:', error);
+      alert('Failed to create event. Please try again.');
+    } finally {
+      setProcessingAction(null);
+    }
   };
 
   const handleApproveJoin = async (notification: AdminNotification) => {
@@ -309,6 +359,10 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
   const categories = [
     { key: 'all', label: 'All', icon: <Bell className="h-4 w-4" /> },
     { key: 'event_suggestion', label: 'Events', icon: <Calendar className="h-4 w-4" /> },
+    { key: 'feedback_suggestion', label: 'Feedback', icon: <Lightbulb className="h-4 w-4" /> },
+    { key: 'question_suggestion', label: 'Questions', icon: <AlertTriangle className="h-4 w-4" /> },
+    { key: 'announcement_suggestion', label: 'Announcements', icon: <Users className="h-4 w-4" /> },
+    { key: 'other_suggestion', label: 'Other', icon: <Flag className="h-4 w-4" /> },
     { key: 'join_request', label: 'Join Requests', icon: <UserPlus className="h-4 w-4" /> },
     { key: 'content_moderation', label: 'Moderation', icon: <Flag className="h-4 w-4" /> },
     { key: 'member_issue', label: 'Issues', icon: <AlertTriangle className="h-4 w-4" /> },
@@ -447,6 +501,9 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
         </div>
       </div>
 
+      {/* Notification Muting/Filtering Placeholder */}
+      <div className="mt-2 text-xs text-neutral-500">(Coming soon: Mute/filter notifications by type)</div>
+
       {/* Notifications List */}
       {error && (
         <div className="bg-red-50 text-red-700 p-4 rounded-lg">
@@ -473,17 +530,20 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className={`p-4 rounded-lg border ${getPriorityColor(notification.intent_details?.priority || 'medium')} ${
+                className={`p-4 rounded-lg border ${getPriorityColor(notification.priority || notification.intent_details?.priority || 'medium')} ${
                   notification.is_read ? 'opacity-75' : ''
                 }`}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-lg ${getCategoryColor(notification.intent_details?.category || 'unknown')}`}>
-                      {getCategoryIcon(notification.intent_details?.category || 'unknown')}
+                    <div className={`p-2 rounded-lg ${getCategoryColor(notification.category || notification.intent_details?.category || 'unknown')}`}>
+                      {getCategoryIcon(notification.category || notification.intent_details?.category || 'unknown')}
                     </div>
                     <div>
-                      <h3 className="font-medium">{notification.intent_details?.summary}</h3>
+                      <h3 className="font-medium flex items-center space-x-2">
+                        <span>{notification.summary || notification.intent_details?.summary}</span>
+                        <span className={`ml-2 px-2 py-0.5 rounded text-xs font-semibold ${getCategoryColor(notification.category || notification.intent_details?.category || 'unknown')}`}>{(notification.category || notification.intent_details?.category || 'unknown').replace('_', ' ')}</span>
+                      </h3>
                       <div className="flex items-center space-x-2 text-sm text-neutral-500">
                         {notification.community && (
                           <span className="flex items-center">
@@ -501,6 +561,12 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold uppercase ${
+                      (notification.priority || notification.intent_details?.priority) === 'urgent' ? 'bg-red-500 text-white' :
+                      (notification.priority || notification.intent_details?.priority) === 'high' ? 'bg-orange-500 text-white' :
+                      (notification.priority || notification.intent_details?.priority) === 'medium' ? 'bg-yellow-400 text-black' :
+                      'bg-green-500 text-white'
+                    }`} title={`Priority: ${notification.priority || notification.intent_details?.priority}`}>{notification.priority || notification.intent_details?.priority}</span>
                     <button
                       onClick={() => markAsRead(notification.id)}
                       className="p-1 text-neutral-500 hover:text-neutral-700 rounded-full"
@@ -536,24 +602,34 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
                     </div>
                   )}
 
-                  {notification.intent_details?.suggestedActions && (
-                    <div className="mb-3">
-                      <p className="text-sm font-medium text-neutral-700 mb-2">Suggested Actions:</p>
-                      <ul className="text-sm text-neutral-600 space-y-1">
-                        {notification.intent_details.suggestedActions.map((action, index) => (
-                          <li key={index} className="flex items-center">
-                            <span className="w-1 h-1 bg-neutral-400 rounded-full mr-2"></span>
-                            {action}
-                          </li>
-                        ))}
-                      </ul>
+                  {(notification.suggested_actions || notification.intent_details?.suggestedActions) && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {(notification.suggested_actions || notification.intent_details?.suggestedActions || []).map((action, index) => {
+                        const mapped = [
+                          'approve_event',
+                          'approve_join',
+                          'moderate_content',
+                          'resolve_issue',
+                        ];
+                        if (mapped.includes(action)) return null;
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => handleAction(notification, action)}
+                            disabled={processingAction === notification.id}
+                            className="flex items-center px-3 py-1 bg-neutral-200 text-neutral-800 text-sm rounded-lg hover:bg-neutral-300 disabled:opacity-50"
+                          >
+                            {action.replace('_', ' ')}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="flex space-x-2">
-                    {notification.intent_details?.category === 'event_suggestion' && (
+                    {(notification.category || notification.intent_details?.category) === 'event_suggestion' && (
                       <button
                         onClick={() => handleAction(notification, 'approve_event')}
                         disabled={processingAction === notification.id}
@@ -567,7 +643,7 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
                         Create Event
                       </button>
                     )}
-                    {notification.intent_details?.category === 'join_request' && (
+                    {(notification.category || notification.intent_details?.category) === 'join_request' && (
                       <button
                         onClick={() => handleAction(notification, 'approve_join')}
                         disabled={processingAction === notification.id}
@@ -577,7 +653,7 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
                         Approve Join
                       </button>
                     )}
-                    {notification.intent_details?.category === 'content_moderation' && (
+                    {(notification.category || notification.intent_details?.category) === 'content_moderation' && (
                       <button
                         onClick={() => handleAction(notification, 'moderate_content')}
                         disabled={processingAction === notification.id}
@@ -587,7 +663,7 @@ const AdminNotificationCenter: React.FC<AdminNotificationCenterProps> = ({
                         Review Content
                       </button>
                     )}
-                    {notification.intent_details?.category === 'member_issue' && (
+                    {(notification.category || notification.intent_details?.category) === 'member_issue' && (
                       <button
                         onClick={() => handleAction(notification, 'resolve_issue')}
                         disabled={processingAction === notification.id}

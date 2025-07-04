@@ -54,6 +54,16 @@ function Header({ isScrolled }: HeaderProps) {
             
             {user ? (
               <div className="flex items-center space-x-4">
+                {/* User Name Display */}
+                <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg ${
+                  isScrolled ? 'text-neutral-700' : 'text-white'
+                }`}>
+                  <User className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    {user.email?.split('@')[0] || 'User'}
+                  </span>
+                </div>
+                
                 {isAdmin && (
                   <Link 
                     to="/admin" 
@@ -135,6 +145,16 @@ function Header({ isScrolled }: HeaderProps) {
               </Link>
               {user ? (
                 <>
+                  {/* User Name in Mobile Menu */}
+                  <div className="px-3 py-2 border-b border-gray-200 mb-2">
+                    <div className="flex items-center space-x-2">
+                      <User className="h-4 w-4 text-neutral-500" />
+                      <span className="text-sm font-medium text-neutral-700">
+                        {user.email?.split('@')[0] || 'User'}
+                      </span>
+                    </div>
+                  </div>
+                  
                   {isAdmin && (
                     <Link 
                       to="/admin" 
