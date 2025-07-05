@@ -2,7 +2,9 @@
 -- This enables hybrid join flow where communities can require admin approval
 -- SAFE TO RUN MULTIPLE TIMES - Idempotent migration
 
+
 -- Check if column exists before adding
+
 DO $$
 BEGIN
     -- Only add the column if it doesn't exist
